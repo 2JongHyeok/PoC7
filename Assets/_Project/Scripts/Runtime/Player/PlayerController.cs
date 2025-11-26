@@ -10,6 +10,8 @@ public sealed class PlayerController : MonoBehaviour
     [TabGroup("Refs")] [SerializeField] private Camera viewCamera;
     [TabGroup("Refs")] [SerializeField] private LayerMask groundMask;
     [TabGroup("Refs")] [SerializeField] private LayerMask enemyMask;
+    [TabGroup("Refs")] [SerializeField] private SpriteRenderer attackRangeIndicator;
+    [TabGroup("Refs")] [SerializeField] private SpriteRenderer flagRangeIndicator;
 
     [TabGroup("Input")] [SerializeField] private KeyCode cancelFlagKey = KeyCode.Mouse1;
     [TabGroup("Input")] [SerializeField] private KeyCode flagKey1 = KeyCode.Alpha1;
@@ -20,11 +22,18 @@ public sealed class PlayerController : MonoBehaviour
     [TabGroup("Combat")] [SerializeField] private GameObject arrowPrefab;
     [TabGroup("Combat")] [SerializeField] private float arrowSpeed = 15f;
     [TabGroup("Combat")] [SerializeField] private Transform arrowSpawnPoint;
+    [TabGroup("Combat")] [SerializeField] private float rangeIndicatorAlpha = 0.15f;
+    [TabGroup("Combat")] [SerializeField] private float attackRangeBonus = 0f;
+
+    [TabGroup("Flags")] [SerializeField] private float flagPreviewAlpha = 0.35f;
+    [TabGroup("Flags")] [SerializeField] private float flagPlacementBonus = 0f;
 
     private Vector2 _moveInput;
     private Vector3 _velocity;
     private FlagConfig _selectedFlag;
+    private int _selectedFlagIndex = -1;
     private float _attackCooldown;
+    private GameObject _flagPreviewInstance;
 
     private void Awake()
     {
@@ -40,6 +49,8 @@ public sealed class PlayerController : MonoBehaviour
         TickMovement(Time.deltaTime);
         TickAttackCooldown(Time.deltaTime);
         TickAutoAttack();
+        UpdateAttackRangeIndicator();
+        UpdateFlagPreview();
     }
 
     private void TryAttack()
@@ -72,7 +83,8 @@ public sealed class PlayerController : MonoBehaviour
     public void TryPlaceFlag(FlagConfig flagConfig, Vector3 worldPosition)
     {
         if (flagConfig == null || flagController == null) return;
-        flagController.PlaceFlag(flagConfig, worldPosition);
+        Vector3 clamped = ClampToAttackRange(worldPosition);
+        flagController.PlaceFlag(flagConfig, clamped);
     }
 
     public bool TryPlaceFlagAtCursor(FlagConfig flagConfig)
@@ -118,6 +130,7 @@ public sealed class PlayerController : MonoBehaviour
             {
                 Debug.Log("[Player] Flag placement failed (no ground hit)");
             }
+            DeselectFlag();
             return;
         }
 
@@ -131,10 +144,10 @@ public sealed class PlayerController : MonoBehaviour
     private void HandleFlagSelection()
     {
         if (flagController == null) return;
-        if (Input.GetKeyDown(flagKey1)) SelectFlagByIndex(0);
-        if (Input.GetKeyDown(flagKey2)) SelectFlagByIndex(1);
-        if (Input.GetKeyDown(flagKey3)) SelectFlagByIndex(2);
-        if (Input.GetKeyDown(flagKey4)) SelectFlagByIndex(3);
+        if (Input.GetKeyDown(flagKey1)) ToggleFlagByIndex(0);
+        if (Input.GetKeyDown(flagKey2)) ToggleFlagByIndex(1);
+        if (Input.GetKeyDown(flagKey3)) ToggleFlagByIndex(2);
+        if (Input.GetKeyDown(flagKey4)) ToggleFlagByIndex(3);
     }
     #endregion
 
@@ -181,6 +194,16 @@ public sealed class PlayerController : MonoBehaviour
     #endregion
 
     #region Flags
+    private void ToggleFlagByIndex(int index)
+    {
+        if (_selectedFlagIndex == index)
+        {
+            DeselectFlag();
+            return;
+        }
+        SelectFlagByIndex(index);
+    }
+
     private void SelectFlagByIndex(int index)
     {
         FlagConfig config = flagController.GetEquippedFlag(index);
@@ -190,14 +213,23 @@ public sealed class PlayerController : MonoBehaviour
             return;
         }
         _selectedFlag = config;
+        _selectedFlagIndex = index;
         Debug.Log($"[Player] Selected flag {_selectedFlag.colorName}");
+        EnsureFlagPreview();
     }
 
     private void RemoveSelectedFlag()
     {
         if (_selectedFlag == null || flagController == null) return;
         flagController.RemoveFlag(_selectedFlag);
+        DeselectFlag();
+    }
+
+    private void DeselectFlag()
+    {
         _selectedFlag = null;
+        _selectedFlagIndex = -1;
+        DestroyFlagPreview();
     }
     #endregion
 
@@ -215,4 +247,161 @@ public sealed class PlayerController : MonoBehaviour
         Debug.Log($"[Player] Arrow spawned toward {targetPosition}");
     }
     #endregion
+
+    #region Range & Preview
+    private void UpdateAttackRangeIndicator()
+    {
+        if (attackRangeIndicator == null || balanceConfig == null) return;
+        if (!attackRangeIndicator.gameObject.activeSelf)
+        {
+            attackRangeIndicator.gameObject.SetActive(true);
+        }
+        float radius = balanceConfig.playerAttackRadius + attackRangeBonus;
+        if (radius < 0f) radius = 0f;
+        float diameter = radius * 2f;
+        attackRangeIndicator.transform.localScale = new Vector3(diameter, diameter, 1f);
+        Color c = attackRangeIndicator.color;
+        c.a = rangeIndicatorAlpha;
+        attackRangeIndicator.color = c;
+    }
+
+    private void UpdateFlagPreview()
+    {
+        if (_selectedFlag == null)
+        {
+            DestroyFlagPreview();
+            return;
+        }
+
+        Vector3 targetPos = transform.position;
+        if (TryGetCursorWorldPoint(out Vector3 worldHit))
+        {
+            targetPos = ClampToAttackRange(worldHit);
+        }
+        else
+        {
+            targetPos = ClampToAttackRange(targetPos);
+        }
+
+        EnsureFlagPreview();
+        if (_flagPreviewInstance != null)
+        {
+            _flagPreviewInstance.transform.position = targetPos;
+            ApplyPreviewAlpha(_flagPreviewInstance, flagPreviewAlpha);
+        }
+
+        float flagRadius = _selectedFlag.radius + flagPlacementBonus;
+        if (flagRadius < 0f) flagRadius = 0f;
+        UpdateFlagRangeIndicator(targetPos, flagRadius);
+    }
+
+    private void EnsureFlagPreview()
+    {
+        if (_selectedFlag == null) return;
+        if (_flagPreviewInstance != null)
+        {
+            // If existing preview is for a different flag, rebuild.
+            if (_flagPreviewInstance.name.Replace("(Clone)", "").Trim() != _selectedFlag.flagPrefab.name)
+            {
+                DestroyFlagPreview();
+            }
+            else
+            {
+                ApplyPreviewAlpha(_flagPreviewInstance, flagPreviewAlpha);
+                return;
+            }
+        }
+        if (_selectedFlag.flagPrefab == null)
+        {
+            Debug.LogWarning($"[Player] No flag prefab for preview: {_selectedFlag.colorName}");
+            return;
+        }
+        _flagPreviewInstance = Object.Instantiate(_selectedFlag.flagPrefab, transform.position, Quaternion.identity);
+        ApplyPreviewAlpha(_flagPreviewInstance, flagPreviewAlpha);
+    }
+
+    private void DestroyFlagPreview()
+    {
+        if (_flagPreviewInstance != null)
+        {
+            Destroy(_flagPreviewInstance);
+            _flagPreviewInstance = null;
+        }
+        if (flagRangeIndicator != null)
+        {
+            flagRangeIndicator.gameObject.SetActive(false);
+        }
+    }
+
+    private void ApplyPreviewAlpha(GameObject target, float alpha)
+    {
+        if (target == null) return;
+        var renderers = target.GetComponentsInChildren<SpriteRenderer>(true);
+        foreach (var r in renderers)
+        {
+            Color c = _selectedFlag != null ? _selectedFlag.color : r.color;
+            c.a = alpha;
+            r.color = c;
+        }
+    }
+
+    private void UpdateFlagRangeIndicator(Vector3 position, float radius)
+    {
+        if (flagRangeIndicator == null) return;
+        flagRangeIndicator.gameObject.SetActive(true);
+        flagRangeIndicator.transform.position = position;
+        float diameter = radius * 2f;
+        flagRangeIndicator.transform.localScale = new Vector3(diameter, diameter, 1f);
+        Color c = flagRangeIndicator.color;
+        if (_selectedFlag != null)
+        {
+            c = _selectedFlag.color;
+        }
+        c.a = rangeIndicatorAlpha;
+        flagRangeIndicator.color = c;
+    }
+
+    private bool TryGetCursorWorldPoint(out Vector3 point)
+    {
+        point = transform.position;
+        if (viewCamera == null) return false;
+        Ray ray = viewCamera.ScreenPointToRay(Input.mousePosition);
+        int mask = groundMask.value == 0 ? Physics.DefaultRaycastLayers : groundMask.value;
+
+        if (Physics.Raycast(ray, out RaycastHit hit, 200f, mask, QueryTriggerInteraction.Ignore))
+        {
+            point = hit.point;
+            return true;
+        }
+
+        RaycastHit2D hit2D = Physics2D.GetRayIntersection(ray, 200f, mask);
+        if (hit2D.collider != null)
+        {
+            point = hit2D.point;
+            return true;
+        }
+        return false;
+    }
+
+    private Vector3 ClampToAttackRange(Vector3 position)
+    {
+        if (balanceConfig == null) return position;
+        Vector2 center = new Vector2(transform.position.x, transform.position.y);
+        Vector2 target = new Vector2(position.x, position.y);
+        Vector2 delta = target - center;
+        float radius = balanceConfig.playerAttackRadius + attackRangeBonus;
+        if (radius < 0f) radius = 0f;
+        if (delta.sqrMagnitude > radius * radius)
+        {
+            delta = delta.normalized * radius;
+        }
+        Vector2 clamped = center + delta;
+        return new Vector3(clamped.x, clamped.y, transform.position.z);
+    }
+    #endregion
+
+    private void OnDisable()
+    {
+        DestroyFlagPreview();
+    }
 }

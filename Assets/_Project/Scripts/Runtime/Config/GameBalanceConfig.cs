@@ -18,13 +18,6 @@ public sealed class GameBalanceConfig : ScriptableObject
     [TabGroup("Player")] [MinValue(0f)] public float playerAttackDamage = 10f;
     [TabGroup("Player")] [MinValue(0.1f)] public float playerAttackInterval = 1f;
     [TabGroup("Player")] [MinValue(0.1f)] public float playerAttackRadius = 2.5f;
-    [TabGroup("Player")] [MinValue(1f)] public float playerMaxHunger = 100f;
-
-    [TabGroup("Hunger")] [Title("Hunger")]
-    [MinValue(0f)] public float hungerDecayPerSecond = 0.5f;
-    [MinValue(0f)] public float hungerDamagePerSecond = 2f;
-    [MinValue(0f)] public float hungerRevivePercent = 0.3f;
-
     [TabGroup("Gathering")] [Title("Gathering")]
     [TabGroup("Gathering")] [MinValue(0f)] public float gatherIntervalSeconds = 2f;
     [TabGroup("Gathering")] [MinValue(1)] public int woodPerTick = 2;

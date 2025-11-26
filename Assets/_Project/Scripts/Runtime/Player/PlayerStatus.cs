@@ -1,4 +1,4 @@
-// Purpose: Handles player health and hunger using balance config (SRP: player vitals)
+// Purpose: Handles player health using balance config (SRP: player vitals)
 using UnityEngine;
 
 public sealed class PlayerStatus : MonoBehaviour
@@ -6,12 +6,10 @@ public sealed class PlayerStatus : MonoBehaviour
     [SerializeField] private GameBalanceConfig balanceConfig;
 
     public event System.Action<float, float> OnHealthChanged; // current, max
-    public event System.Action<float, float> OnHungerChanged; // current, max
     public event System.Action OnDeath;
     public event System.Action OnRespawn;
 
     private float _currentHealth;
-    private float _currentHunger;
     private bool _isDead;
 
     private void Awake()
@@ -24,15 +22,8 @@ public sealed class PlayerStatus : MonoBehaviour
         }
 
         _currentHealth = balanceConfig.playerStartHealth;
-        _currentHunger = balanceConfig.playerMaxHunger;
         ReportVitals();
         Debug.Log("[PlayerStatus] Initialized");
-    }
-
-    private void Update()
-    {
-        if (_isDead) return;
-        TickHunger(Time.deltaTime);
     }
 
     public void ApplyDamage(float amount)
@@ -54,17 +45,6 @@ public sealed class PlayerStatus : MonoBehaviour
         OnHealthChanged?.Invoke(_currentHealth, balanceConfig.playerMaxHealth);
     }
 
-    private void TickHunger(float deltaTime)
-    {
-        _currentHunger = Mathf.Max(0f, _currentHunger - balanceConfig.hungerDecayPerSecond * deltaTime);
-        OnHungerChanged?.Invoke(_currentHunger, balanceConfig.playerMaxHunger);
-
-        if (_currentHunger <= 0f)
-        {
-            ApplyDamage(balanceConfig.hungerDamagePerSecond * deltaTime);
-        }
-    }
-
     private void HandleDeath()
     {
         _isDead = true;
@@ -77,7 +57,6 @@ public sealed class PlayerStatus : MonoBehaviour
     {
         _isDead = false;
         _currentHealth = balanceConfig.playerMaxHealth;
-        _currentHunger = balanceConfig.playerMaxHunger * balanceConfig.hungerRevivePercent;
         ReportVitals();
         Debug.Log("[PlayerStatus] Player respawned");
         OnRespawn?.Invoke();
@@ -86,6 +65,5 @@ public sealed class PlayerStatus : MonoBehaviour
     private void ReportVitals()
     {
         OnHealthChanged?.Invoke(_currentHealth, balanceConfig.playerMaxHealth);
-        OnHungerChanged?.Invoke(_currentHunger, balanceConfig.playerMaxHunger);
     }
 }
