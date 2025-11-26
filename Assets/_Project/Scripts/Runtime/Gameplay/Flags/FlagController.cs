@@ -8,11 +8,15 @@ public sealed class FlagController : MonoBehaviour
     [TabGroup("Setup")] [SerializeField] private List<FlagConfig> equippedFlags = new List<FlagConfig>();
     [TabGroup("Setup")] [SerializeField] private int maxEquipped = 4;
     [TabGroup("Setup")] [SerializeField] private Transform flagContainer;
+    [TabGroup("Setup")] [SerializeField] private SpriteRenderer rangeIndicatorPrefab;
+    [TabGroup("Setup")] [SerializeField] private float rangeIndicatorAlpha = 0.15f;
 
     public event System.Action<FlagConfig, Vector3> OnFlagPlaced;
     public event System.Action<FlagConfig> OnFlagRemoved;
+    public event System.Action<FlagConfig, Vector3> OnFlagSelected;
 
     private readonly Dictionary<FlagConfig, GameObject> _placedFlags = new Dictionary<FlagConfig, GameObject>();
+    private readonly Dictionary<FlagConfig, SpriteRenderer> _rangeIndicators = new Dictionary<FlagConfig, SpriteRenderer>();
 
     public bool EquipFlag(FlagConfig config)
     {
@@ -83,6 +87,11 @@ public sealed class FlagController : MonoBehaviour
             _placedFlags.Remove(config);
             Debug.Log($"[Flag] Destroyed {config.colorName} instance");
         }
+        if (_rangeIndicators.TryGetValue(config, out var indicator))
+        {
+            Object.Destroy(indicator.gameObject);
+            _rangeIndicators.Remove(config);
+        }
         OnFlagRemoved?.Invoke(config);
         Debug.Log($"[Flag] Removed {config.colorName}");
     }
@@ -94,4 +103,81 @@ public sealed class FlagController : MonoBehaviour
     }
 
     public IReadOnlyList<FlagConfig> EquippedFlags => equippedFlags;
+
+    private void CreateRangeIndicator(FlagConfig config, Vector3 position)
+    {
+        if (rangeIndicatorPrefab == null || config == null) return;
+        SpriteRenderer indicator = Object.Instantiate(rangeIndicatorPrefab, position, Quaternion.identity, flagContainer);
+        _rangeIndicators[config] = indicator;
+        UpdateRangeIndicator(config, position);
+    }
+
+    private void UpdateRangeIndicator(FlagConfig config, Vector3 position)
+    {
+        if (config == null) return;
+        if (!_rangeIndicators.TryGetValue(config, out var indicator))
+        {
+            CreateRangeIndicator(config, position);
+            return;
+        }
+
+        indicator.transform.position = position;
+        float diameter = config.radius * 2f;
+        indicator.transform.localScale = new Vector3(diameter, diameter, 1f);
+
+        Color c = config.color;
+        c.a = rangeIndicatorAlpha;
+        indicator.color = c;
+        indicator.gameObject.SetActive(true);
+    }
+
+    public void SelectFlagInstance(FlagConfig config)
+    {
+        HideAllIndicators();
+
+        if (config == null) return;
+        if (!_placedFlags.TryGetValue(config, out GameObject instance))
+        {
+            Debug.LogWarning("[Flag] Select failed: no placed instance");
+            return;
+        }
+        if (!_rangeIndicators.ContainsKey(config))
+        {
+            CreateRangeIndicator(config, instance.transform.position);
+        }
+        else
+        {
+            UpdateRangeIndicator(config, instance.transform.position);
+        }
+        HideOtherIndicators(config);
+        OnFlagSelected?.Invoke(config, instance.transform.position);
+    }
+
+    public void DeselectAllFlags()
+    {
+        HideAllIndicators();
+    }
+
+    private void HideOtherIndicators(FlagConfig except)
+    {
+        foreach (var kv in _rangeIndicators)
+        {
+            if (kv.Key == except) continue;
+            if (kv.Value != null)
+            {
+                kv.Value.gameObject.SetActive(false);
+            }
+        }
+    }
+
+    private void HideAllIndicators()
+    {
+        foreach (var kv in _rangeIndicators)
+        {
+            if (kv.Value != null)
+            {
+                kv.Value.gameObject.SetActive(false);
+            }
+        }
+    }
 }

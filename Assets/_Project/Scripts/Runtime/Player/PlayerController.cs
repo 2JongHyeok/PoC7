@@ -1,5 +1,6 @@
 // Purpose: Handles player movement, ranged auto-attack, and flag placement commands (SRP: player control)
 using UnityEngine;
+using System.Collections.Generic;
 using Sirenix.OdinInspector;
 
 public sealed class PlayerController : MonoBehaviour
@@ -12,6 +13,7 @@ public sealed class PlayerController : MonoBehaviour
     [TabGroup("Refs")] [SerializeField] private LayerMask enemyMask;
     [TabGroup("Refs")] [SerializeField] private SpriteRenderer attackRangeIndicator;
     [TabGroup("Refs")] [SerializeField] private SpriteRenderer flagRangeIndicator;
+    [TabGroup("Refs")] [SerializeField] private List<GameObject> flagHighlights = new List<GameObject>();
 
     [TabGroup("Input")] [SerializeField] private KeyCode cancelFlagKey = KeyCode.Mouse1;
     [TabGroup("Input")] [SerializeField] private KeyCode flagKey1 = KeyCode.Alpha1;
@@ -130,7 +132,6 @@ public sealed class PlayerController : MonoBehaviour
             {
                 Debug.Log("[Player] Flag placement failed (no ground hit)");
             }
-            DeselectFlag();
             return;
         }
 
@@ -216,6 +217,8 @@ public sealed class PlayerController : MonoBehaviour
         _selectedFlagIndex = index;
         Debug.Log($"[Player] Selected flag {_selectedFlag.colorName}");
         EnsureFlagPreview();
+        flagController?.SelectFlagInstance(config);
+        UpdateFlagHighlights();
     }
 
     private void RemoveSelectedFlag()
@@ -230,6 +233,7 @@ public sealed class PlayerController : MonoBehaviour
         _selectedFlag = null;
         _selectedFlagIndex = -1;
         DestroyFlagPreview();
+        UpdateFlagHighlights();
     }
     #endregion
 
@@ -330,6 +334,17 @@ public sealed class PlayerController : MonoBehaviour
         if (flagRangeIndicator != null)
         {
             flagRangeIndicator.gameObject.SetActive(false);
+        }
+    }
+
+    private void UpdateFlagHighlights()
+    {
+        for (int i = 0; i < flagHighlights.Count; i++)
+        {
+            GameObject highlight = flagHighlights[i];
+            if (highlight == null) continue;
+            bool active = (_selectedFlagIndex == i);
+            highlight.SetActive(active);
         }
     }
 
