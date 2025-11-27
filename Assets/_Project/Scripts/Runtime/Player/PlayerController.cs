@@ -85,7 +85,7 @@ public sealed class PlayerController : MonoBehaviour
     public void TryPlaceFlag(FlagConfig flagConfig, Vector3 worldPosition)
     {
         if (flagConfig == null || flagController == null) return;
-        Vector3 clamped = ClampToAttackRange(worldPosition);
+        Vector3 clamped = ClampPositionToAttackRange(worldPosition);
         flagController.PlaceFlag(flagConfig, clamped);
     }
 
@@ -280,11 +280,11 @@ public sealed class PlayerController : MonoBehaviour
         Vector3 targetPos = transform.position;
         if (TryGetCursorWorldPoint(out Vector3 worldHit))
         {
-            targetPos = ClampToAttackRange(worldHit);
+            targetPos = ClampPositionToAttackRange(worldHit);
         }
         else
         {
-            targetPos = ClampToAttackRange(targetPos);
+            targetPos = ClampPositionToAttackRange(targetPos);
         }
 
         EnsureFlagPreview();
@@ -398,7 +398,7 @@ public sealed class PlayerController : MonoBehaviour
         return false;
     }
 
-    private Vector3 ClampToAttackRange(Vector3 position)
+    public Vector3 ClampPositionToAttackRange(Vector3 position)
     {
         if (balanceConfig == null) return position;
         Vector2 center = new Vector2(transform.position.x, transform.position.y);
